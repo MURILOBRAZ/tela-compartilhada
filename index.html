@@ -115,6 +115,8 @@
   .dc-body { display:flex; flex-direction:column; gap:10px; }
   .dc-body ol { margin:0; padding-left:18px; color:var(--muted); font-size:12px; }
   .discord { color:#5865f2; }
+  #audioScope { font-size:12px; margin:6px 0 0; }
+  #audioScope.ok { color:var(--green); }
 
   #toast { position:fixed; left:50%; top:16px; transform:translate(-50%,-80px); background:var(--panel2); border:1px solid var(--line);
            padding:8px 14px; border-radius:10px; transition:transform .25s; z-index:10; font-size:13px; max-width:90vw; text-align:center; }
@@ -216,9 +218,9 @@
 
         <h3>Áudio</h3>
         <div class="toggle"><span>Som do PC</span><input type="checkbox" id="sSys" class="switch"></div>
-        <p id="sysWarn" class="warn" hidden>Nenhum áudio capturado. Clique em <b>Trocar</b> e marque “Compartilhar áudio” na janela do navegador.</p>
+        <p id="sysWarn" class="warn" hidden>Nenhum áudio capturado. Clique em <b>Trocar</b> e marque “Compartilhar áudio” na janela do navegador. Dica: escolha uma <b>Janela</b> para mandar só o som daquele app, sem o Discord.</p>
         <input type="range" id="sSysVol" min="0" max="100">
-        <p class="hint" style="margin:4px 0 0">Amigos se ouvindo pelo Discord? <a href="https://github.com/MURILOBRAZ/tela-compartilhada#tirar-o-som-do-discord-da-transmissão" target="_blank" style="color:var(--acc)">Veja como tirar o som do Discord</a></p>
+        <p id="audioScope" hidden></p>
         <div class="toggle" style="margin-top:14px"><span>Microfone</span><input type="checkbox" id="sMic" class="switch"></div>
         <select id="sMicId" style="width:100%;margin-bottom:8px"><option value="">Microfone padrão</option></select>
         <input type="range" id="sMicVol" min="0" max="150">
@@ -340,8 +342,9 @@ function pickSource() {
   const r = RES[S.res];
   return navigator.mediaDevices.getDisplayMedia({
     video: { frameRate: { ideal: S.fps, max: S.fps }, ...(r ? { width: { max: r[0] }, height: { max: r[1] } } : {}) },
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-    systemAudio: 'include', surfaceSwitching: 'include', selfBrowserSurface: 'exclude',
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true },
+    // windowAudio:'window' -> ao escolher uma JANELA, o Chrome oferece o áudio só daquele app (Discord fica de fora)
+    windowAudio: 'window', systemAudio: 'include', surfaceSwitching: 'include', selfBrowserSurface: 'exclude',
   });
 }
 
@@ -384,6 +387,17 @@ function setCapture(s) {
   $('srcType').textContent = { monitor:'Tela inteira', window:'Janela', browser:'Aba do navegador' }[surf] || 'Tela';
   $('srcLabel').textContent = videoTrack.label;
   $('sysWarn').hidden = !!at;
+  const note = $('audioScope');
+  if (!at) note.hidden = true;
+  else {
+    note.hidden = false;
+    const whole = surf === 'monitor';
+    note.className = whole ? 'warn' : 'hint ok';
+    note.innerHTML = whole
+      ? '⚠ Tela inteira: vai <b>todo o som do PC, inclusive o Discord</b>. Para tirar o Discord, clique em <b>Trocar</b>, vá na aba <b>Janela</b>, escolha o jogo/app e marque <b>Compartilhar áudio</b>.'
+      : `✓ Só o som ${surf === 'browser' ? 'desta aba' : 'desta janela'} vai para a transmissão. O Discord fica de fora.`;
+    if (whole) toast('Tela inteira inclui o som do Discord. Escolha uma Janela para excluí-lo.');
+  }
 }
 
 async function switchSource() {
