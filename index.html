@@ -115,6 +115,10 @@
   .dc-body { display:flex; flex-direction:column; gap:10px; }
   .dc-body ol { margin:0; padding-left:18px; color:var(--muted); font-size:12px; }
   .discord { color:#5865f2; }
+  #home.quick .divider, #home.quick #joinForm, #home.quick #dcBox, #home.quick #fileHint { display:none; }
+  #home.quick #btnHost { padding:26px; font-size:18px; animation:attn2 1.6s infinite; }
+  #quickHint { text-align:center; margin:0; }
+  @keyframes attn2 { 50% { box-shadow:0 0 0 8px rgba(91,140,255,.25); } }
   #audioScope { font-size:12px; margin:6px 0 0; }
   #audioScope.ok { color:var(--green); }
 
@@ -136,6 +140,7 @@
   <div class="home-box">
     <h1><i data-icon="monitor"></i>Tela Compartilhada</h1>
     <button id="btnHost" class="btn primary big"><i data-icon="cast"></i>Transmitir minha tela</button>
+    <p id="quickHint" class="hint" hidden>Clique acima e escolha a tela, janela ou aba. O aviso sai no Discord automaticamente.</p>
     <div class="divider">ou assista alguém</div>
     <form id="joinForm" class="row">
       <input id="roomInput" placeholder="Código ou link da sala" autocomplete="off">
@@ -154,6 +159,7 @@
         <div class="toggle"><span>Mencionar @here</span><input type="checkbox" id="dcPing" class="switch"></div>
         <div class="row"><button id="dcTest" class="btn sm" type="button" style="flex:1">Testar envio</button>
           <button id="dcShare" class="btn sm" type="button" style="flex:1">Link p/ amigos</button></div>
+        <button id="dcShortcut" class="btn sm" type="button">📌 Postar atalho "Iniciar transmissão" no canal</button>
         <p class="hint" style="margin:0">Quem abrir o <b>Link p/ amigos</b> ou clicar num convite postado no canal já fica com o Discord configurado.</p>
         <p class="hint" style="margin:0">A URL fica salva só neste navegador. Não compartilhe ela: quem a tem pode postar no canal.</p>
       </div>
@@ -895,6 +901,32 @@ $('dcShare').onclick = async () => {
   history.replaceState(null, '', location.pathname + location.search);
 })();
 syncDiscordUI();
+
+// Atalho fixável no canal: abre o site já no modo "transmitir"
+$('dcShortcut').onclick = async () => {
+  if (!WEBHOOK_RE.test(dcBase())) { toast('Cole a URL do webhook primeiro'); return; }
+  const link = dcLink(location.origin + location.pathname + '?transmitir');
+  try {
+    const r = await fetch(dcBase(), { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ username:'Tela Compartilhada', embeds:[{
+        title: '🎥 Quer transmitir sua tela?',
+        url: link,
+        description: `**[▶ Clique aqui para iniciar a transmissão](${link})**\n\nAbre o site, você escolhe a tela/janela e o aviso com o link sai aqui no canal automaticamente.`,
+        color: 0x5b8cff,
+        footer: { text: 'Fixe esta mensagem: … → Fixar mensagem' },
+      }] }) });
+    toast(r.ok ? 'Atalho postado! Agora fixe a mensagem no canal (… → Fixar).' : 'O Discord recusou (' + r.status + ')');
+  } catch { toast('Não foi possível falar com o Discord'); }
+};
+
+// Veio pelo atalho do Discord? Mostra só o botão de transmitir.
+if (new URLSearchParams(location.search).has('transmitir')) {
+  history.replaceState(null, '', location.pathname);
+  $('home').classList.add('quick');
+  $('quickHint').hidden = false;
+  $('btnHost').lastChild.textContent = 'Escolher tela e começar';
+  $('btnHost').focus();
+}
 if (S.webhook) $('dcBox').open = false;
 
 // Abriu um link de convite? Entra direto.
