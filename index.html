@@ -152,7 +152,9 @@
         <input id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" spellcheck="false">
         <div class="toggle"><span>Avisar no canal ao começar</span><input type="checkbox" id="dcAuto" class="switch"></div>
         <div class="toggle"><span>Mencionar @here</span><input type="checkbox" id="dcPing" class="switch"></div>
-        <button id="dcTest" class="btn sm" type="button">Testar envio</button>
+        <div class="row"><button id="dcTest" class="btn sm" type="button" style="flex:1">Testar envio</button>
+          <button id="dcShare" class="btn sm" type="button" style="flex:1">Link p/ amigos</button></div>
+        <p class="hint" style="margin:0">Quem abrir o <b>Link p/ amigos</b> ou clicar num convite postado no canal já fica com o Discord configurado.</p>
         <p class="hint" style="margin:0">A URL fica salva só neste navegador. Não compartilhe ela: quem a tem pode postar no canal.</p>
       </div>
     </details>
@@ -549,13 +551,16 @@ function renderViewers() {
 const WEBHOOK_RE = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/;
 let dcMsgId = null, dcTimer = null;
 const dcBase = () => S.webhook.trim().replace(/\?.*$/, '').replace(/\/$/, '');
+// "id/token" do webhook, levado no #hash dos links (o hash nunca é enviado a nenhum servidor)
+const dcKey = () => dcBase().replace(/^.*\/api\/webhooks\//, '');
+const dcLink = base => WEBHOOK_RE.test(dcBase()) ? `${base}#dc=${dcKey()}` : base;
 
 function dcEmbed(state) {
   const who = S.name || 'Alguém';
   if (state === 'ended') return {
     title: `⚫ ${who} encerrou a transmissão`, color: 0x4f545c, timestamp: new Date().toISOString(),
   };
-  const link = $('shareLink').value;
+  const link = dcLink($('shareLink').value);   // quem clicar já recebe a integração
   const names = [...viewers.values()].map(v => v.name);
   return {
     title: `${paused ? '⏸' : '🔴'} ${who} está transmitindo`,
@@ -875,6 +880,20 @@ $('dcTest').onclick = async () => {
   } catch { toast('Não foi possível falar com o Discord'); }
 };
 $('btnDiscord').onclick = () => { if (dcMsgId) discordEnd(false); discordAnnounce(); };
+$('dcShare').onclick = async () => {
+  if (!WEBHOOK_RE.test(dcBase())) { toast('Cole a URL do webhook primeiro'); return; }
+  try { await navigator.clipboard.writeText(dcLink(location.origin + location.pathname)); toast('Link copiado! Mande no grupo.'); }
+  catch { toast('Não foi possível copiar'); }
+};
+
+// Chegou por um link com #dc=...? Salva o webhook e limpa a URL.
+(() => {
+  const m = location.hash.match(/dc=(\d+\/[\w-]+)/);
+  if (!m) return;
+  const url = 'https://discord.com/api/webhooks/' + m[1];
+  if (S.webhook !== url) { S.webhook = url; save(); toast('Discord configurado! Suas transmissões serão avisadas no canal.'); }
+  history.replaceState(null, '', location.pathname + location.search);
+})();
 syncDiscordUI();
 if (S.webhook) $('dcBox').open = false;
 
