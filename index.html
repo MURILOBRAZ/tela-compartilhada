@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tela Compartilhada</title>
+<meta property="og:title" content="Tela Compartilhada">
+<meta property="og:description" content="Clique para assistir à transmissão de tela ao vivo.">
+<meta name="theme-color" content="#5b8cff">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
   :root {
@@ -103,6 +106,15 @@
   #viewerList li button:hover { color:var(--red); }
   #viewerList li button svg { width:16px; height:16px; }
   .empty { color:var(--muted); font-size:13px; }
+  details.dc { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  details.dc summary { cursor:pointer; color:#c9cdd5; display:flex; align-items:center; gap:8px; list-style:none; }
+  details.dc summary::-webkit-details-marker { display:none; }
+  details.dc summary .st { margin-left:auto; font-size:12px; color:var(--muted); }
+  details.dc summary .st.ok { color:var(--green); }
+  details.dc[open] summary { margin-bottom:10px; }
+  .dc-body { display:flex; flex-direction:column; gap:10px; }
+  .dc-body ol { margin:0; padding-left:18px; color:var(--muted); font-size:12px; }
+  .discord { color:#5865f2; }
 
   #toast { position:fixed; left:50%; top:16px; transform:translate(-50%,-80px); background:var(--panel2); border:1px solid var(--line);
            padding:8px 14px; border-radius:10px; transition:transform .25s; z-index:10; font-size:13px; max-width:90vw; text-align:center; }
@@ -128,6 +140,20 @@
       <button class="btn" type="submit">Assistir</button>
     </form>
     <input id="nameInput" placeholder="Seu nome (opcional)" maxlength="30">
+    <details class="dc" id="dcBox">
+      <summary><i data-icon="discord" class="discord"></i>Discord <span id="dcState" class="st">não configurado</span></summary>
+      <div class="dc-body">
+        <ol>
+          <li>No Discord: <b>Editar canal → Integrações → Webhooks → Novo webhook</b></li>
+          <li>Clique em <b>Copiar URL do webhook</b> e cole aqui</li>
+        </ol>
+        <input id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" spellcheck="false">
+        <div class="toggle"><span>Avisar no canal ao começar</span><input type="checkbox" id="dcAuto" class="switch"></div>
+        <div class="toggle"><span>Mencionar @here</span><input type="checkbox" id="dcPing" class="switch"></div>
+        <button id="dcTest" class="btn sm" type="button">Testar envio</button>
+        <p class="hint" style="margin:0">A URL fica salva só neste navegador. Não compartilhe ela: quem a tem pode postar no canal.</p>
+      </div>
+    </details>
     <p id="fileHint" class="hint" hidden>Você abriu o arquivo localmente. Para os amigos entrarem pelo link, publique esta página (ex.: Netlify Drop ou GitHub Pages). Com o código, funciona igual.</p>
   </div>
 </div>
@@ -168,6 +194,7 @@
         <h3>Convite</h3>
         <div class="row"><input id="shareLink" readonly><button id="btnCopy" class="btn sm">Copiar</button></div>
         <p class="hint" style="margin:6px 0 0">Código: <b id="roomCode" style="color:var(--acc);font-family:ui-monospace,monospace;letter-spacing:1px"></b></p>
+        <button id="btnDiscord" class="btn sm" style="margin-top:8px;width:100%"><i data-icon="discord" class="discord"></i>Enviar convite no Discord</button>
 
         <h3>Fonte</h3>
         <div class="src"><i data-icon="monitor"></i><div><span id="srcType">—</span><small id="srcLabel"></small></div>
@@ -242,6 +269,7 @@ const ICONS = {
   pip:'<rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/>',
   full:'<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>',
   x:'<path d="M18 6L6 18M6 6l12 12"/>',
+  discord:'<path d="M8 17c-2.5.8-4.5 0-5-.5C3 11 4.5 7 6 5.5 7.5 4.8 9 4.5 9.5 4.5l.5 1h4l.5-1c.5 0 2 .3 3.5 1C19.5 7 21 11 21 16.5c-.5.5-2.5 1.3-5 .5l-1-1.5"/><path d="M7 15.5c3 1.3 7 1.3 10 0"/><circle cx="9" cy="11.5" r="1"/><circle cx="15" cy="11.5" r="1"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24">${ICONS[n]}</svg>`;
 const setIcon = (el, n) => { el.innerHTML = icon(n); };
@@ -267,7 +295,8 @@ const fmtRate = kbps => kbps >= 1000 ? (kbps / 1000).toFixed(1) + ' Mbps' : Math
 const statRows = (el, rows) => { el.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join(''); };
 
 /* ================== Configurações salvas ================== */
-const DEF = { res:'1080', fps:30, bitrate:4, mode:'detail', sysAudio:true, sysVol:100, micId:'', micVol:100, name:'', volume:100 };
+const DEF = { res:'1080', fps:30, bitrate:4, mode:'detail', sysAudio:true, sysVol:100, micId:'', micVol:100, name:'', volume:100,
+              webhook:'', dcAuto:true, dcPing:false };
 const S = (() => { try { return { ...DEF, ...JSON.parse(localStorage.getItem('telacomp') || '{}') }; } catch { return { ...DEF }; } })();
 S.mic = false;   // microfone sempre começa desligado
 const save = () => { try { const { mic, ...rest } = S; localStorage.setItem('telacomp', JSON.stringify(rest)); } catch {} };
@@ -426,6 +455,7 @@ function togglePause() {
   broadcast({ t:'state', paused });
   paused ? overlay('Transmissão pausada. Os espectadores estão vendo uma tela de pausa.', { btns:[['Retomar', togglePause, 'primary']] }) : overlay(null);
   syncUI();
+  discordRefresh();
 }
 
 function broadcast(msg) { for (const v of viewers.values()) if (v.conn.open) v.conn.send(msg); }
@@ -439,6 +469,7 @@ function openRoom() {
     $('roomCode').textContent = roomCode;
     updateBadge();
     copyInvite(true);
+    if (S.webhook && S.dcAuto) discordAnnounce();
   });
 
   peer.on('connection', conn => {
@@ -496,6 +527,69 @@ function renderViewers() {
   $('vCount').textContent = viewers.size;
   $('noViewers').hidden = viewers.size > 0;
   updateBadge();
+  discordRefresh();
+}
+
+/* ================== Discord (webhook) ================== */
+const WEBHOOK_RE = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+let dcMsgId = null, dcTimer = null;
+const dcBase = () => S.webhook.trim().replace(/\?.*$/, '').replace(/\/$/, '');
+
+function dcEmbed(state) {
+  const who = S.name || 'Alguém';
+  if (state === 'ended') return {
+    title: `⚫ ${who} encerrou a transmissão`, color: 0x4f545c, timestamp: new Date().toISOString(),
+  };
+  const link = $('shareLink').value;
+  const names = [...viewers.values()].map(v => v.name);
+  return {
+    title: `${paused ? '⏸' : '🔴'} ${who} está transmitindo`,
+    url: link,
+    description: `**[▶ Clique para assistir](${link})**\nCódigo da sala: \`${roomCode}\``,
+    color: paused ? 0xf5b942 : 0xff5d5d,
+    fields: [{ name: `👀 Assistindo (${names.length})`, value: names.length ? names.join(', ').slice(0, 1000) : 'Ninguém ainda' }],
+    footer: { text: 'Tela Compartilhada' },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function discordAnnounce() {
+  if (!WEBHOOK_RE.test(dcBase())) { toast('URL do webhook do Discord inválida'); return; }
+  try {
+    const r = await fetch(dcBase() + '?wait=true', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'Tela Compartilhada',
+        content: S.dcPing ? '@here' : '',
+        allowed_mentions: { parse: S.dcPing ? ['everyone'] : [] },
+        embeds: [dcEmbed('live')],
+      }),
+    });
+    if (!r.ok) throw new Error(r.status);
+    dcMsgId = (await r.json()).id;
+    toast('Convite enviado no Discord');
+  } catch (e) { toast('Falha ao enviar no Discord (' + e.message + ')'); }
+}
+
+function discordEdit(state, keepalive = false) {
+  if (!dcMsgId || !WEBHOOK_RE.test(dcBase())) return;
+  return fetch(`${dcBase()}/messages/${dcMsgId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, keepalive,
+    body: JSON.stringify({ content: '', embeds: [dcEmbed(state)] }),
+  }).catch(() => {});
+}
+
+// Atualiza a mensagem (quem está assistindo / pausado) sem estourar o limite do Discord
+function discordRefresh() {
+  if (!dcMsgId || role !== 'host') return;
+  clearTimeout(dcTimer);
+  dcTimer = setTimeout(() => discordEdit('live'), 3000);
+}
+
+function discordEnd(keepalive) {
+  clearTimeout(dcTimer);
+  discordEdit('ended', keepalive);
+  dcMsgId = null;
 }
 
 function updateBadge() {
@@ -537,6 +631,7 @@ function stopHost() {
   micStream?.getTracks().forEach(t => t.stop()); micStream = null; S.mic = false;
   for (const v of viewers.values()) { v.call?.close(); v.conn.close(); }
   viewers.clear(); renderViewers();
+  discordEnd(false);
   peer?.destroy(); peer = null;
   ctx?.close(); ctx = null;
   backHome();
@@ -743,7 +838,30 @@ addEventListener('keydown', e => {
 
 // Evita fechar a aba sem querer durante a transmissão
 addEventListener('beforeunload', e => { if (role === 'host') { e.preventDefault(); e.returnValue = ''; } });
-addEventListener('pagehide', () => peer?.destroy());
+addEventListener('pagehide', () => { if (role === 'host') discordEnd(true); peer?.destroy(); });
+
+// Discord
+function syncDiscordUI() {
+  const ok = WEBHOOK_RE.test(dcBase());
+  $('dcUrl').value = S.webhook; $('dcAuto').checked = S.dcAuto; $('dcPing').checked = S.dcPing;
+  $('dcState').textContent = ok ? 'conectado' : (S.webhook ? 'URL inválida' : 'não configurado');
+  $('dcState').className = 'st' + (ok ? ' ok' : '');
+  $('btnDiscord').hidden = !ok;
+}
+$('dcUrl').oninput = () => { S.webhook = $('dcUrl').value.trim(); save(); syncDiscordUI(); };
+$('dcAuto').onchange = () => { S.dcAuto = $('dcAuto').checked; save(); };
+$('dcPing').onchange = () => { S.dcPing = $('dcPing').checked; save(); };
+$('dcTest').onclick = async () => {
+  if (!WEBHOOK_RE.test(dcBase())) { toast('Cole a URL do webhook primeiro'); return; }
+  try {
+    const r = await fetch(dcBase(), { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ username:'Tela Compartilhada', content:'✅ Integração funcionando! As transmissões serão avisadas aqui.' }) });
+    toast(r.ok ? 'Mensagem de teste enviada!' : 'O Discord recusou (' + r.status + ')');
+  } catch { toast('Não foi possível falar com o Discord'); }
+};
+$('btnDiscord').onclick = () => { if (dcMsgId) discordEnd(false); discordAnnounce(); };
+syncDiscordUI();
+if (S.webhook) $('dcBox').open = false;
 
 // Abriu um link de convite? Entra direto.
 syncUI();
